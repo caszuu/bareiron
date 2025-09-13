@@ -461,26 +461,43 @@ uint8_t buildChunkSection (int cx, int cy, int cz) {
   // This does mean that we're generating some terrain only to replace it,
   // but it's better to apply changes in one run rather than in individual
   // runs per block, as this is more expensive than terrain generation.
-  for (int i = 0; i < block_changes_count; i ++) {
-    if (block_changes[i].block == 0xFF) continue;
-    // Skip blocks that behave better when sent using a block update
-    if (block_changes[i].block == B_torch) continue;
-    #ifdef ALLOW_CHESTS
-      if (block_changes[i].block == B_chest) continue;
-    #endif
-    if ( // Check if block is within this chunk section
-      block_changes[i].x >= cx && block_changes[i].x < cx + 16 &&
-      block_changes[i].y >= cy && block_changes[i].y < cy + 16 &&
-      block_changes[i].z >= cz && block_changes[i].z < cz + 16
-    ) {
-      int dx = block_changes[i].x - cx;
-      int dy = block_changes[i].y - cy;
-      int dz = block_changes[i].z - cz;
-      // Same 8-block sequence reversal as before, this time 10x dirtier
-      // because we're working with specific indexes.
-      unsigned address = (unsigned)(dx + (dz << 4) + (dy << 8));
-      unsigned index = (address & ~7u) | (7u - (address & 7u));
-      chunk_section[index] = block_changes[i].block;
+  for (int i = cz; i < cz + 16 + CHUNK_SIZE; i += CHUNK_SIZE) {
+    for (int j = cx; j < cx + 16 + CHUNK_SIZE; j += CHUNK_SIZE) {
+      ChunkInfo *info = getChunkChanges(j / CHUNK_SIZE, i / CHUNK_SIZE);
+      if (info == NULL) continue;
+
+      ChunkDiff *diff = info->next_diff;
+      while (diff != NULL) {
+        for (int k = 0; k < 16; k ++) {
+          if (diff->changes[k].block == 0xFF) continue;
+          // Skip blocks that behave better when sent using a block update
+          if (diff->changes[k].block == B_torch) continue;
+          #ifdef ALLOW_CHESTS
+            if (diff->changes[k].block == B_chest) continue;
+          #endif
+          int pos = diff->changes[k].pos;
+          int x = (pos & 15) + info->x * CHUNK_SIZE;
+          int z = ((pos >> 4) & 15) + info->z * CHUNK_SIZE;
+          int y = (pos >> 8);
+
+          if ( // Check if block is within this chunk section
+            x >= cx && x < cx + 16 &&
+            y >= cy && y < cy + 16 &&
+            z >= cz && z < cz + 16
+          ) {
+            int dx = x - cx;
+            int dy = y - cy;
+            int dz = z - cz;
+            // Same 8-block sequence reversal as before, this time 10x dirtier
+            // because we're working with specific indexes.
+            unsigned address = (unsigned)(dx + (dz << 4) + (dy << 8));
+            unsigned index = (address & ~7u) | (7u - (address & 7u));
+            chunk_section[index] = diff->changes[k].block;
+          }
+        }
+
+        diff = diff->next_diff;
+      }
     }
   }
 

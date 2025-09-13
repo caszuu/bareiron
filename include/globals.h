@@ -74,6 +74,14 @@
 // Determines the fixed amount of memory allocated to blocks
 #define MAX_BLOCK_CHANGES 20000
 
+// The minimal guaranteed number of chunks that can be modified
+// Note that the actual number of chunks supported will be much higher than
+// this minimum *if* the server is not running out of memory. In the case that
+// it is, only the minimum is guaranteed to not fail.
+#define MIN_GUARANTEED_MODIFIED_CHUNKS 60
+
+#define MAX_BIFF_SIZE (((MAX_BLOCK_CHANGES + 1) / 16) * sizeof(ChunkDiff) + MIN_GUARANTEED_MODIFIED_CHUNKS * sizeof(ChunkInfo))
+
 // If defined, writes and reads world data to/from disk (or flash).
 // This is a synchronous operation, and can cause performance issues if
 // frequent random disk access is slow. Data is still stored in and
@@ -129,7 +137,7 @@
 // Chests take up 15 block change slots each, require additional checks,
 // and use some terrible memory hacks to function. On some platforms, this
 // could cause bad performance or even crashes during gameplay.
-#define ALLOW_CHESTS
+// #define ALLOW_CHESTS
 
 // If defined, enables flight for all players. As a side-effect, allows
 // players to sprint when starving.
@@ -155,6 +163,9 @@
 // and uploading world data by sending 0xFEED, followed by the data buffer.
 // Doesn't implement authentication, hence disabled by default.
 // #define DEV_ENABLE_BEEF_DUMPS
+
+// If defined, log the memory usage of biff storage (chunk diffs) on every allocation
+#define DEV_LOG_BIFF_STATS
 
 #define STATE_NONE 0
 #define STATE_STATUS 1
@@ -183,11 +194,20 @@ extern uint8_t motd_len;
 extern uint16_t client_count;
 
 typedef struct {
-  short x;
-  short z;
-  uint8_t y;
+  uint16_t pos; // 4b x, 4b z, 8b y
   uint8_t block;
 } BlockChange;
+
+typedef struct ChunkDiff ChunkDiff;
+typedef struct ChunkDiff {
+  BlockChange changes[16];
+  ChunkDiff *next_diff;
+} ChunkDiff;
+
+typedef struct {
+  int x, z;             // the chunk coords of this list, all following diffs will apply to this chunk
+  ChunkDiff *next_diff; // ptr to the first diff segment, other "allocated" diffs are attached in a linked list
+} ChunkInfo;
 
 #pragma pack(push, 1)
 
@@ -244,8 +264,8 @@ typedef struct {
 
 #pragma pack(pop)
 
-extern BlockChange block_changes[MAX_BLOCK_CHANGES];
-extern int block_changes_count;
+extern uint8_t biff_buffer[MAX_BIFF_SIZE];
+extern int biff_chunk_count /* from front */, biff_diff_count /* from back */;
 
 extern PlayerData player_data[MAX_PLAYERS];
 extern int player_data_count;

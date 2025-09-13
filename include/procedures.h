@@ -22,6 +22,7 @@ void spawnPlayer (PlayerData *player);
 uint8_t serverSlotToClientSlot (int window_id, uint8_t slot);
 uint8_t clientSlotToServerSlot (int window_id, uint8_t slot);
 
+ChunkInfo *getChunkChanges (int chunk_x, int chunk_z);
 uint8_t getBlockChange (short x, uint8_t y, short z);
 uint8_t makeBlockChange (short x, uint8_t y, short z, uint8_t block);
 

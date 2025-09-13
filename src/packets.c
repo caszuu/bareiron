@@ -408,15 +408,32 @@ int sc_chunkDataAndUpdateLight (int client_fd, int _x, int _z) {
   // Light-emitting blocks are omitted from chunk data so that they can
   // be overlayed here. This seems to be cheaper than sending actual
   // block light data.
-  for (int i = 0; i < block_changes_count; i ++) {
-    #ifdef ALLOW_CHESTS
-      if (block_changes[i].block != B_torch && block_changes[i].block != B_chest) continue;
-    #else
-      if (block_changes[i].block != B_torch) continue;
-    #endif
-    if (block_changes[i].x < x || block_changes[i].x >= x + 16) continue;
-    if (block_changes[i].z < z || block_changes[i].z >= z + 16) continue;
-    sc_blockUpdate(client_fd, block_changes[i].x, block_changes[i].y, block_changes[i].z, block_changes[i].block);
+  for (int i = z; i < z + 16 /*+ CHUNK_SIZE*/; i += CHUNK_SIZE) {
+    for (int j = x; j < x + 16 /*+ CHUNK_SIZE*/; j += CHUNK_SIZE) {
+      ChunkInfo *info = getChunkChanges(j / CHUNK_SIZE, i / CHUNK_SIZE);
+      if (info == NULL) continue;
+
+      ChunkDiff *diff = info->next_diff;
+      while (diff != NULL) {
+        for (int k = 0; k < 16; k ++) {
+          int pos = diff->changes[k].pos;
+          int x = (pos & 15) + info->x * CHUNK_SIZE;
+          int z = ((pos >> 4) & 15) + info->z * CHUNK_SIZE;
+          int y = (pos >> 8);
+
+          #ifdef ALLOW_CHESTS
+            if (diff->changes[k].block != B_torch && diff->changes[k].block != B_chest) continue;
+          #else
+            if (diff->changes[k].block != B_torch) continue;
+          #endif
+          // if (x < x || x >= x + 16) continue;
+          // if (z < z || z >= z + 16) continue;
+          sc_blockUpdate(client_fd, x, y, z, diff->changes[k].block);
+        }
+
+        diff = diff->next_diff;
+      }
+    }
   }
 
   return 0;

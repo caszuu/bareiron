@@ -330,19 +330,49 @@ void spawnPlayer (PlayerData *player) {
 
 }
 
-uint8_t getBlockChange (short x, uint8_t y, short z) {
-  for (int i = 0; i < block_changes_count; i ++) {
-    if (block_changes[i].block == 0xFF) continue;
-    if (
-      block_changes[i].x == x &&
-      block_changes[i].y == y &&
-      block_changes[i].z == z
-    ) return block_changes[i].block;
-    #ifdef ALLOW_CHESTS
-      // Skip chest contents
-      if (block_changes[i].block == B_chest) i += 14;
-    #endif
+#ifdef ALLOW_CHESTS
+#error Chests are not yet supported with the Biff chunk format.
+#endif
+
+uint8_t getBlockChangeFromChunk (ChunkInfo *info, short x, uint8_t y, short z) {
+  // compute and bitpack the chunk-local block position
+  uint16_t pos = ((unsigned)x % CHUNK_SIZE) | (((unsigned)z % CHUNK_SIZE) << 4) | (y << 8);
+
+  ChunkDiff *diff = info->next_diff;
+  while (diff != NULL) {
+    // check block changes in diff section
+    for (int j = 0; j < 16; j ++) {
+      if (diff->changes[j].block == 0xFF) continue;
+      if (diff->changes[j].pos == pos)
+        return diff->changes[j].block;
+
+      // FIXME: chest / multi-slot support
+    }
+
+    // no match in this diff, try the next
+    diff = diff->next_diff;
   }
+  return 0xFF;
+}
+
+ChunkInfo *getChunkChanges (int chunk_x, int chunk_z) {
+  for (int i = 0; i < biff_chunk_count; i++) {
+    ChunkInfo *info = ((ChunkInfo *)biff_buffer) + i;
+
+    // if (info->next_diff == NULL) continue; // invalid / unused
+    if (info->x == chunk_x && info->z == chunk_z) return info;
+  }
+  return NULL;
+}
+
+// a light wrapper around getChunkChanges / getBlockChangeFromChunk
+uint8_t getBlockChange (short x, uint8_t y, short z) {
+  int ch_x = x / CHUNK_SIZE;
+  int ch_z = z / CHUNK_SIZE;
+
+  ChunkInfo *info = getChunkChanges(ch_x, ch_z);
+  if (info != NULL) return getBlockChangeFromChunk(info, x, y, z);
+
   return 0xFF;
 }
 
@@ -364,8 +394,9 @@ void failBlockChange (short x, uint8_t y, short z, uint8_t block) {
 
 }
 
+// FIXME: chunk/diff deallocation does not exist yet, should at least release diffs if they are empty
+// FIXME: disk restored version will be corrupt, chunk infos are not synced
 uint8_t makeBlockChange (short x, uint8_t y, short z, uint8_t block) {
-
   // Transmit block update to all in-game clients
   for (int i = 0; i < MAX_PLAYERS; i ++) {
     if (player_data[i].client_fd == -1) continue;
@@ -387,102 +418,121 @@ uint8_t makeBlockChange (short x, uint8_t y, short z, uint8_t block) {
 
   uint8_t is_base_block = block == getTerrainAt(x, y, z, anchor);
 
-  // In the block_changes array, 0xFF indicates a missing/restored entry.
-  // We track the position of the first such "gap" for when the operation
-  // isn't replacing an existing block change.
-  int first_gap = block_changes_count;
+  // find owning chunk (or allocate if required)
+  ChunkInfo *info = getChunkChanges(anchor.x, anchor.z);
 
-  // Prioritize replacing entries with matching coordinates
-  // This prevents having conflicting entries for one set of coordinates
-  for (int i = 0; i < block_changes_count; i ++) {
-    if (block_changes[i].block == 0xFF) {
-      if (first_gap == block_changes_count) first_gap = i;
-      continue;
+  if (info == NULL) {
+    // chunk not yet modified, allocate its change data from biff_buffer
+
+    if (is_base_block) return 0; // note: should never happen (?)
+    if ((biff_chunk_count + 1) * sizeof(ChunkInfo) + (biff_diff_count + 1) * sizeof(ChunkDiff) > MAX_BIFF_SIZE) {
+      // out of memory
+      failBlockChange(x, y, z, block);
+      return 1;
     }
-    if (
-      block_changes[i].x == x &&
-      block_changes[i].y == y &&
-      block_changes[i].z == z
-    ) {
-      #ifdef ALLOW_CHESTS
-      // When replacing chests, clear following 14 entries too (item data)
-      if (block_changes[i].block == B_chest) {
-        for (int j = 1; j < 15; j ++) block_changes[i + j].block = 0xFF;
-      }
-      #endif
-      if (is_base_block) block_changes[i].block = 0xFF;
-      else block_changes[i].block = block;
-      #ifndef DISK_SYNC_BLOCKS_ON_INTERVAL
-      writeBlockChangesToDisk(i, i);
-      #endif
-      return 0;
+
+    // setup initial diff
+    ChunkDiff *diff = (ChunkDiff *)(biff_buffer + MAX_BIFF_SIZE - (biff_diff_count + 1) * sizeof(ChunkDiff)); // allocate from back
+    biff_diff_count ++;
+
+    *diff = (ChunkDiff){0};
+    for (int i = 0; i < 16; i ++) {
+      diff->changes[i].block = 0xFF;
     }
+
+    // setup chunk info
+    info = ((ChunkInfo *)biff_buffer) + biff_chunk_count;
+    biff_chunk_count ++;
+
+    *info = (ChunkInfo){
+      anchor.x,
+      anchor.z,
+      diff,
+    };
+
+#ifdef DEV_LOG_BIFF_STATS
+    printf("Biff stats\n");
+    printf("  Chunk info usage: %d chunks - %dB\n", biff_chunk_count, biff_chunk_count * sizeof(ChunkInfo));
+    printf("  Chunk diff usage: %d diffs - %dB\n\n", biff_diff_count, biff_diff_count * sizeof(ChunkDiff));
+#endif
   }
 
-  // Don't create a new entry if it contains the base terrain block
-  if (is_base_block) return 0;
+  // try to replace an existing entry
 
-  #ifdef ALLOW_CHESTS
-  if (block == B_chest) {
-    // Chests require 15 entries total, so for maximum space-efficiency,
-    // we have to find a continuous gap that's at least 15 slots wide.
-    // By design, this loop also continues past the current search range,
-    // which naturally appends the chest to the end if a gap isn't found.
-    int last_real_entry = first_gap - 1;
-    for (int i = first_gap; i <= block_changes_count + 15; i ++) {
-      if (block_changes[i].block != 0xFF) {
-        last_real_entry = i;
+  // compute and bitpack the chunk-local block position
+  uint16_t block_pos = ((unsigned)x % CHUNK_SIZE) | (((unsigned)z % CHUNK_SIZE) << 4) | (y << 8);
+
+  BlockChange *first_gap = NULL;
+  ChunkDiff *diff = info->next_diff;
+  while (true) {
+    for (int i = 0; i < 16; i ++) {
+      if (diff->changes[i].block == 0xFF) {
+        if (first_gap == NULL) first_gap = &diff->changes[i];
         continue;
       }
-      if (i - last_real_entry != 15) continue;
-      // A wide enough gap has been found, assign the chest
-      block_changes[last_real_entry + 1].x = x;
-      block_changes[last_real_entry + 1].y = y;
-      block_changes[last_real_entry + 1].z = z;
-      block_changes[last_real_entry + 1].block = block;
-      // Zero out the following 14 entries for item data
-      for (int i = 2; i <= 15; i ++) {
-        block_changes[last_real_entry + i].x = 0;
-        block_changes[last_real_entry + i].y = 0;
-        block_changes[last_real_entry + i].z = 0;
-        block_changes[last_real_entry + i].block = 0;
+
+      if (diff->changes[i].pos == block_pos) {
+        if (is_base_block) diff->changes[i].block = 0xFF;
+        else diff->changes[i].block = block;
+
+        // FIXME: chest / multi-slot support
+
+        #ifndef DISK_SYNC_BLOCKS_ON_INTERVAL
+        // writeBlockChangesToDisk((void *)&diff->changes[i] - (void *)biff_buffer, sizeof(BlockChange));
+        #endif
+        return 0;
       }
-      // Extend future search range if necessary
-      if (i >= block_changes_count) {
-        block_changes_count = i + 1;
-      }
-      // Write changes to disk (if applicable)
-      #ifndef DISK_SYNC_BLOCKS_ON_INTERVAL
-      writeBlockChangesToDisk(last_real_entry + 1, last_real_entry + 15);
-      #endif
-      return 0;
     }
-    // If we're here, no changes were made
-    failBlockChange(x, y, z, block);
-    return 1;
-  }
-  #endif
 
-  // Handle running out of memory for new block changes
-  if (first_gap == MAX_BLOCK_CHANGES) {
-    failBlockChange(x, y, z, block);
-    return 1;
+    // no matches found, try next diff from list
+
+    if (diff->next_diff == NULL) break; // end of list, keep ptr to last diff in `diff`
+    diff = diff->next_diff;
   }
 
-  // Fall back to storing the change at the first possible gap
-  block_changes[first_gap].x = x;
-  block_changes[first_gap].y = y;
-  block_changes[first_gap].z = z;
-  block_changes[first_gap].block = block;
+  // Don't create a new entry if it contains the base terrain block - again, should never be possible? (except like placing water on water ig)
+  if (is_base_block) return 0;
+
+  // no existing block change entry found, allocate a new one from the chunk
+  BlockChange *dst;
+
+  if (first_gap != NULL) {
+    // gap in chunk diffs found, fill it in
+    dst = first_gap;
+  } else {
+    // no gap found, append a new diff
+
+    if (biff_chunk_count * sizeof(ChunkInfo) + (biff_diff_count + 1) * sizeof(ChunkDiff) > MAX_BIFF_SIZE) {
+      // out of memory
+      failBlockChange(x, y, z, block);
+      return 1;
+    }
+
+    ChunkDiff *new_diff = (ChunkDiff *)(biff_buffer + MAX_BIFF_SIZE - (biff_diff_count + 1) * sizeof(ChunkDiff)); // allocate from back
+    biff_diff_count++;
+
+    *new_diff = (ChunkDiff){0};
+    for (int i = 0; i < 16; i ++) {
+      new_diff->changes[i].block = 0xFF;
+    }
+
+    diff->next_diff = new_diff; // link new diff with the chunks list
+    dst = &new_diff->changes[0];
+
+#ifdef DEV_LOG_BIFF_STATS
+    printf("Biff stats\n");
+    printf("  Chunk info usage: %d chunks - %dB\n", biff_chunk_count, biff_chunk_count * sizeof(ChunkInfo));
+    printf("  Chunk diff usage: %d diffs - %dB\n\n", biff_diff_count, biff_diff_count * sizeof(ChunkDiff));
+#endif
+  }
+
+  // fill-in the block info
+  dst->pos = block_pos;
+  dst->block = block;
   // Write change to disk (if applicable)
   #ifndef DISK_SYNC_BLOCKS_ON_INTERVAL
-  writeBlockChangesToDisk(first_gap, first_gap);
+  // writeBlockChangesToDisk(dst - (void *)biff_buffer, sizeof(BlockChange));
   #endif
-  // Extend future search range if we've appended to the end
-  if (first_gap == block_changes_count) {
-    block_changes_count ++;
-  }
-
   return 0;
 }
 

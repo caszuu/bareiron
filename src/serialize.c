@@ -42,19 +42,19 @@ int initSerializer () {
   if (file) {
 
     // Read block changes from the start of the file directly into memory
-    size_t read = fread(block_changes, 1, sizeof(block_changes), file);
-    if (read != sizeof(block_changes)) {
-      printf("Read %u bytes from \"world.bin\", expected %u (block changes). Aborting.\n", read, sizeof(block_changes));
+    size_t read = fread(biff_buffer, 1, sizeof(biff_buffer), file);
+    if (read != sizeof(biff_buffer)) {
+      printf("Read %u bytes from \"world.bin\", expected %u (block changes). Aborting.\n", read, sizeof(biff_buffer));
       return 1;
     }
     // Find the index of the last occupied entry to recover block_changes_count
-    for (int i = 0; i < MAX_BLOCK_CHANGES; i ++) {
-      if (block_changes[i].block == 0xFF) continue;
-      if (block_changes[i].block == B_chest) i += 14;
-      if (i >= block_changes_count) block_changes_count = i + 1;
-    }
+    // for (int i = 0; i < MAX_BLOCK_CHANGES; i ++) {
+    //   if (block_changes[i].block == 0xFF) continue;
+    //   if (block_changes[i].block == B_chest) i += 14;
+    //   if (i >= block_changes_count) block_changes_count = i + 1;
+    // }
     // Seek past block changes to start reading player data
-    if (fseek(file, sizeof(block_changes), SEEK_SET) != 0) {
+    if (fseek(file, sizeof(biff_buffer), SEEK_SET) != 0) {
       perror("Failed to seek to player data in \"world.bin\". Aborting.");
       return 1;
     }
@@ -80,8 +80,8 @@ int initSerializer () {
     }
     // Write initial block changes array
     // This should be done after all entries have had `block` set to 0xFF
-    size_t written = fwrite(block_changes, 1, sizeof(block_changes), file);
-    if (written != sizeof(block_changes)) {
+    size_t written = fwrite(biff_buffer, 1, sizeof(biff_buffer), file);
+    if (written != sizeof(biff_buffer)) {
       perror(
         "Failed to write initial block data to \"world.bin\".\n"
         "Consider checking permissions or disabling SYNC_WORLD_TO_DISK in \"globals.h\"."
@@ -89,7 +89,7 @@ int initSerializer () {
       return 1;
     }
     // Seek past written block changes to start writing player data
-    if (fseek(file, sizeof(block_changes), SEEK_SET) != 0) {
+    if (fseek(file, sizeof(biff_buffer), SEEK_SET) != 0) {
       perror(
         "Failed to seek past block changes in \"world.bin\"."
         "Consider checking permissions or disabling SYNC_WORLD_TO_DISK in \"globals.h\"."
@@ -113,7 +113,7 @@ int initSerializer () {
 }
 
 // Writes a range of block change entries to disk
-void writeBlockChangesToDisk (int from, int to) {
+void writeBlockChangesToDisk (int offset, int size) {
 
   #ifdef DISK_SYNC_BLOCKS_ON_INTERVAL
     // Skip this write if enough time hasn't passed since the last one
@@ -128,19 +128,17 @@ void writeBlockChangesToDisk (int from, int to) {
     return;
   }
 
-  for (int i = from; i <= to; i ++) {
-    // Seek to relevant offset in file
-    if (fseek(file, i * sizeof(BlockChange), SEEK_SET) != 0) {
-      fclose(file);
-      perror("Failed to seek in \"world.bin\". Block updates have been dropped.");
-      return;
-    }
-    // Write block change entry to file
-    if (fwrite(&block_changes[i], 1, sizeof(BlockChange), file) != sizeof(BlockChange)) {
-      fclose(file);
-      perror("Failed to write to \"world.bin\". Block updates have been dropped.");
-      return;
-    }
+  // Seek to relevant offset in file
+  if (fseek(file, offset, SEEK_SET) != 0) {
+    fclose(file);
+    perror("Failed to seek in \"world.bin\". Block updates have been dropped.");
+    return;
+  }
+  // Write block change entry to file
+  if (fwrite(biff_buffer + offset, 1, size, file) != sizeof(BlockChange)) {
+    fclose(file);
+    perror("Failed to write to \"world.bin\". Block updates have been dropped.");
+    return;
   }
 
   fclose(file);
@@ -160,7 +158,7 @@ void writePlayerDataToDisk () {
     return;
   }
   // Seek past block changes in file
-  if (fseek(file, sizeof(block_changes), SEEK_SET) != 0) {
+  if (fseek(file, sizeof(biff_buffer), SEEK_SET) != 0) {
     fclose(file);
     perror("Failed to seek in \"world.bin\". Player updates have been dropped.");
     return;
