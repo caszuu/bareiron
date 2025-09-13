@@ -80,7 +80,12 @@
 // it is, only the minimum is guaranteed to not fail.
 #define MIN_GUARANTEED_MODIFIED_CHUNKS 60
 
-#define MAX_BIFF_SIZE (((MAX_BLOCK_CHANGES + 1) / 16) * sizeof(ChunkDiff) + MIN_GUARANTEED_MODIFIED_CHUNKS * sizeof(ChunkInfo))
+// In how big segments are block change arrays allocated from
+// the biff buffer pool. Bigger numbers will have lesser overhead
+// from diff links but will also waste memory if diffs are not fully filled up
+#define BLOCK_COUNT_PER_DIFF 8
+
+#define MAX_BIFF_SIZE (((MAX_BLOCK_CHANGES + 1) / BLOCK_COUNT_PER_DIFF) * sizeof(ChunkDiff) + MIN_GUARANTEED_MODIFIED_CHUNKS * sizeof(ChunkInfo))
 
 // If defined, writes and reads world data to/from disk (or flash).
 // This is a synchronous operation, and can cause performance issues if
@@ -200,7 +205,7 @@ typedef struct {
 
 typedef struct ChunkDiff ChunkDiff;
 typedef struct ChunkDiff {
-  BlockChange changes[16];
+  BlockChange changes[BLOCK_COUNT_PER_DIFF];
   ChunkDiff *next_diff;
 } ChunkDiff;
 

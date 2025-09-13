@@ -341,7 +341,7 @@ uint8_t getBlockChangeFromChunk (ChunkInfo *info, short x, uint8_t y, short z) {
   ChunkDiff *diff = info->next_diff;
   while (diff != NULL) {
     // check block changes in diff section
-    for (int j = 0; j < 16; j ++) {
+    for (int j = 0; j < BLOCK_COUNT_PER_DIFF; j ++) {
       if (diff->changes[j].block == 0xFF) continue;
       if (diff->changes[j].pos == pos)
         return diff->changes[j].block;
@@ -436,7 +436,7 @@ uint8_t makeBlockChange (short x, uint8_t y, short z, uint8_t block) {
     biff_diff_count ++;
 
     *diff = (ChunkDiff){0};
-    for (int i = 0; i < 16; i ++) {
+    for (int i = 0; i < BLOCK_COUNT_PER_DIFF; i ++) {
       diff->changes[i].block = 0xFF;
     }
 
@@ -465,7 +465,7 @@ uint8_t makeBlockChange (short x, uint8_t y, short z, uint8_t block) {
   BlockChange *first_gap = NULL;
   ChunkDiff *diff = info->next_diff;
   while (true) {
-    for (int i = 0; i < 16; i ++) {
+    for (int i = 0; i < BLOCK_COUNT_PER_DIFF; i ++) {
       if (diff->changes[i].block == 0xFF) {
         if (first_gap == NULL) first_gap = &diff->changes[i];
         continue;
@@ -512,7 +512,7 @@ uint8_t makeBlockChange (short x, uint8_t y, short z, uint8_t block) {
     biff_diff_count++;
 
     *new_diff = (ChunkDiff){0};
-    for (int i = 0; i < 16; i ++) {
+    for (int i = 0; i < BLOCK_COUNT_PER_DIFF; i ++) {
       new_diff->changes[i].block = 0xFF;
     }
 

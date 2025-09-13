@@ -468,7 +468,7 @@ uint8_t buildChunkSection (int cx, int cy, int cz) {
 
       ChunkDiff *diff = info->next_diff;
       while (diff != NULL) {
-        for (int k = 0; k < 16; k ++) {
+        for (int k = 0; k < BLOCK_COUNT_PER_DIFF; k ++) {
           if (diff->changes[k].block == 0xFF) continue;
           // Skip blocks that behave better when sent using a block update
           if (diff->changes[k].block == B_torch) continue;

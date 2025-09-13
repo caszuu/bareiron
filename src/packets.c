@@ -415,7 +415,7 @@ int sc_chunkDataAndUpdateLight (int client_fd, int _x, int _z) {
 
       ChunkDiff *diff = info->next_diff;
       while (diff != NULL) {
-        for (int k = 0; k < 16; k ++) {
+        for (int k = 0; k < BLOCK_COUNT_PER_DIFF; k ++) {
           int pos = diff->changes[k].pos;
           int x = (pos & 15) + info->x * CHUNK_SIZE;
           int z = ((pos >> 4) & 15) + info->z * CHUNK_SIZE;
