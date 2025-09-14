@@ -405,8 +405,8 @@ void relocateChunkDiff (ChunkDiff *from, ChunkDiff *to) {
 
 // a light wrapper around getChunkChanges / getBlockChangeFromChunk
 uint8_t getBlockChange (short x, uint8_t y, short z) {
-  int ch_x = x / CHUNK_SIZE;
-  int ch_z = z / CHUNK_SIZE;
+  int ch_x = div_floor(x, CHUNK_SIZE);
+  int ch_z = div_floor(z, CHUNK_SIZE);
 
   ChunkInfo *info = getChunkChanges(ch_x, ch_z);
   if (info != NULL) return getBlockChangeFromChunk(info, x, y, z);
@@ -462,7 +462,10 @@ uint8_t makeBlockChange (short x, uint8_t y, short z, uint8_t block) {
     // chunk not yet modified, allocate its change data from chunk_buffer
 
     if (is_base_block) return 0; // note: should never happen (?)
-    if ((chunk_info_count + 1) * sizeof(ChunkInfo) + (chunk_diff_count + 1) * sizeof(ChunkDiff) > MAX_CHUNK_BUF_SIZE) {
+    if (
+      (chunk_info_count + 1) * sizeof(ChunkInfo) + (chunk_diff_count + 1) * sizeof(ChunkDiff) > MAX_CHUNK_BUF_SIZE ||
+      (chunk_diff_count + 1) * sizeof(ChunkDiff) > MAX_CHUNK_DIFF_BUF_SIZE
+    ) {
       // out of memory
       failBlockChange(x, y, z, block);
       return 1;
@@ -580,7 +583,7 @@ uint8_t makeBlockChange (short x, uint8_t y, short z, uint8_t block) {
   } else {
     // no gap found, append a new diff
 
-    if (chunk_info_count * sizeof(ChunkInfo) + (chunk_diff_count + 1) * sizeof(ChunkDiff) > MAX_CHUNK_BUF_SIZE) {
+    if ((chunk_diff_count + 1) * sizeof(ChunkDiff) > MAX_CHUNK_DIFF_BUF_SIZE) {
       // out of memory
       failBlockChange(x, y, z, block);
       return 1;

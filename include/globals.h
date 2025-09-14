@@ -77,15 +77,16 @@
 // The minimal guaranteed number of chunks that can be modified
 // Note that the actual number of chunks supported will be much higher than
 // this minimum *if* the server is not running out of memory. In the case that
-// it is, only the minimum is guaranteed to not fail.
-#define MIN_GUARANTEED_MODIFIED_CHUNKS 60
+// it is, only the minimum is guaranteed to not fail. (if there's still space for diffs)
+#define MIN_GUARANTEED_MODIFIED_CHUNKS 128
 
 // In how big segments are block change arrays allocated from
 // the chunk buffer pool. Bigger numbers will have lesser overhead
 // from diff links but will also waste more memory if diffs are not fully filled up
 #define BLOCK_COUNT_PER_DIFF 8
 
-#define MAX_CHUNK_BUF_SIZE (((MAX_BLOCK_CHANGES + 1) / BLOCK_COUNT_PER_DIFF) * sizeof(ChunkDiff) + MIN_GUARANTEED_MODIFIED_CHUNKS * sizeof(ChunkInfo))
+#define MAX_CHUNK_DIFF_BUF_SIZE (MAX_BLOCK_CHANGES / BLOCK_COUNT_PER_DIFF) * sizeof(ChunkDiff)
+#define MAX_CHUNK_BUF_SIZE (MAX_CHUNK_DIFF_BUF_SIZE + MIN_GUARANTEED_MODIFIED_CHUNKS * sizeof(ChunkInfo))
 
 // If defined, writes and reads world data to/from disk (or flash).
 // This is a synchronous operation, and can cause performance issues if
