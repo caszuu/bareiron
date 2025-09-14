@@ -330,11 +330,8 @@ void spawnPlayer (PlayerData *player) {
 
 }
 
-#ifdef ALLOW_CHESTS
-#error Chests are not yet supported with the Biff chunk format.
-#endif
-
 uint8_t getBlockChangeFromChunk (ChunkInfo *info, short x, uint8_t y, short z) {
+
   // compute and bitpack the chunk-local block position
   uint16_t pos = ((unsigned)x % CHUNK_SIZE) | (((unsigned)z % CHUNK_SIZE) << 4) | (y << 8);
 
@@ -352,20 +349,26 @@ uint8_t getBlockChangeFromChunk (ChunkInfo *info, short x, uint8_t y, short z) {
     // no match in this diff, try the next
     diff = diff->next_diff;
   }
+
   return 0xFF;
+
 }
 
 ChunkInfo *getChunkChanges (int chunk_x, int chunk_z) {
+
   for (int i = 0; i < chunk_info_count; i++) {
     ChunkInfo *info = ((ChunkInfo *)chunk_buffer) + i;
 
     // if (info->next_diff == NULL) continue; // invalid / unused
     if (info->x == chunk_x && info->z == chunk_z) return info;
   }
+
   return NULL;
+
 }
 
 void relocateChunkDiff (ChunkDiff *from, ChunkDiff *to) {
+
   if (from == to) return;
 
   // a less-than-ideal loop to find the effective "diff->prev_diff"
@@ -401,10 +404,12 @@ void relocateChunkDiff (ChunkDiff *from, ChunkDiff *to) {
   // swap and patch links
   *to = *from;
   owning_info->next_diff = to;
+
 }
 
 // a light wrapper around getChunkChanges / getBlockChangeFromChunk
 uint8_t getBlockChange (short x, uint8_t y, short z) {
+
   int ch_x = div_floor(x, CHUNK_SIZE);
   int ch_z = div_floor(z, CHUNK_SIZE);
 
@@ -412,6 +417,7 @@ uint8_t getBlockChange (short x, uint8_t y, short z) {
   if (info != NULL) return getBlockChangeFromChunk(info, x, y, z);
 
   return 0xFF;
+
 }
 
 // Handle running out of memory for new block changes
@@ -434,6 +440,7 @@ void failBlockChange (short x, uint8_t y, short z, uint8_t block) {
 
 // TODO: implement chunk diff serialization, will have to be smarter than a memcpy as the chunk structs contain pointers
 uint8_t makeBlockChange (short x, uint8_t y, short z, uint8_t block) {
+
   // Transmit block update to all in-game clients
   for (int i = 0; i < MAX_PLAYERS; i ++) {
     if (player_data[i].client_fd == -1) continue;
@@ -610,9 +617,12 @@ uint8_t makeBlockChange (short x, uint8_t y, short z, uint8_t block) {
   // fill-in the block info
   dst->pos = block_pos;
   dst->block = block;
+
   // Write change to disk (if applicable)
   // FIXME: sync to disk
+
   return 0;
+
 }
 
 // Returns the result of mining a block, taking into account the block type and tools

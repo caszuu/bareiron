@@ -85,9 +85,6 @@
 // from diff links but will also waste more memory if diffs are not fully filled up
 #define BLOCK_COUNT_PER_DIFF 8
 
-#define MAX_CHUNK_DIFF_BUF_SIZE (MAX_BLOCK_CHANGES / BLOCK_COUNT_PER_DIFF) * sizeof(ChunkDiff)
-#define MAX_CHUNK_BUF_SIZE (MAX_CHUNK_DIFF_BUF_SIZE + MIN_GUARANTEED_MODIFIED_CHUNKS * sizeof(ChunkInfo))
-
 // If defined, writes and reads world data to/from disk (or flash).
 // This is a synchronous operation, and can cause performance issues if
 // frequent random disk access is slow. Data is still stored in and
@@ -145,6 +142,10 @@
 // could cause bad performance or even crashes during gameplay.
 // #define ALLOW_CHESTS
 
+#ifdef ALLOW_CHESTS
+  #error Chests are not yet supported with the Biff chunk format.
+#endif
+
 // If defined, enables flight for all players. As a side-effect, allows
 // players to sprint when starving.
 // #define ENABLE_PLAYER_FLIGHT
@@ -179,6 +180,9 @@
 #define STATE_TRANSFER 3
 #define STATE_CONFIGURATION 4
 #define STATE_PLAY 5
+
+#define MAX_CHUNK_DIFF_BUF_SIZE (MAX_BLOCK_CHANGES / BLOCK_COUNT_PER_DIFF) * sizeof(ChunkDiff)
+#define MAX_CHUNK_BUF_SIZE (MAX_CHUNK_DIFF_BUF_SIZE + MIN_GUARANTEED_MODIFIED_CHUNKS * sizeof(ChunkInfo))
 
 extern ssize_t recv_count;
 extern uint8_t recv_buffer[256];
