@@ -356,8 +356,8 @@ uint8_t getBlockChangeFromChunk (ChunkInfo *info, short x, uint8_t y, short z) {
 }
 
 ChunkInfo *getChunkChanges (int chunk_x, int chunk_z) {
-  for (int i = 0; i < biff_chunk_count; i++) {
-    ChunkInfo *info = ((ChunkInfo *)biff_buffer) + i;
+  for (int i = 0; i < chunk_info_count; i++) {
+    ChunkInfo *info = ((ChunkInfo *)chunk_buffer) + i;
 
     // if (info->next_diff == NULL) continue; // invalid / unused
     if (info->x == chunk_x && info->z == chunk_z) return info;
@@ -394,8 +394,8 @@ void failBlockChange (short x, uint8_t y, short z, uint8_t block) {
 
 }
 
-// FIXME: chunk/diff deallocation does not exist yet, should at least release diffs if they are empty
-// FIXME: disk restored version will be corrupt, chunk infos are not synced
+// FIXME: chunk info/diff deallocation does not exist yet, should at least release diffs if they are empty
+// TODO: implement chunk diff serialization, will have to be smarter than a memcpy as the chunk structs contain pointers
 uint8_t makeBlockChange (short x, uint8_t y, short z, uint8_t block) {
   // Transmit block update to all in-game clients
   for (int i = 0; i < MAX_PLAYERS; i ++) {
@@ -422,18 +422,18 @@ uint8_t makeBlockChange (short x, uint8_t y, short z, uint8_t block) {
   ChunkInfo *info = getChunkChanges(anchor.x, anchor.z);
 
   if (info == NULL) {
-    // chunk not yet modified, allocate its change data from biff_buffer
+    // chunk not yet modified, allocate its change data from chunk_buffer
 
     if (is_base_block) return 0; // note: should never happen (?)
-    if ((biff_chunk_count + 1) * sizeof(ChunkInfo) + (biff_diff_count + 1) * sizeof(ChunkDiff) > MAX_BIFF_SIZE) {
+    if ((chunk_info_count + 1) * sizeof(ChunkInfo) + (chunk_diff_count + 1) * sizeof(ChunkDiff) > MAX_CHUNK_BUF_SIZE) {
       // out of memory
       failBlockChange(x, y, z, block);
       return 1;
     }
 
     // setup initial diff
-    ChunkDiff *diff = (ChunkDiff *)(biff_buffer + MAX_BIFF_SIZE - (biff_diff_count + 1) * sizeof(ChunkDiff)); // allocate from back
-    biff_diff_count ++;
+    ChunkDiff *diff = (ChunkDiff *)(chunk_buffer + MAX_CHUNK_BUF_SIZE - (chunk_diff_count + 1) * sizeof(ChunkDiff)); // allocate from back
+    chunk_diff_count ++;
 
     *diff = (ChunkDiff){0};
     for (int i = 0; i < BLOCK_COUNT_PER_DIFF; i ++) {
@@ -441,8 +441,8 @@ uint8_t makeBlockChange (short x, uint8_t y, short z, uint8_t block) {
     }
 
     // setup chunk info
-    info = ((ChunkInfo *)biff_buffer) + biff_chunk_count;
-    biff_chunk_count ++;
+    info = ((ChunkInfo *)chunk_buffer) + chunk_info_count;
+    chunk_info_count ++;
 
     *info = (ChunkInfo){
       anchor.x,
@@ -450,10 +450,10 @@ uint8_t makeBlockChange (short x, uint8_t y, short z, uint8_t block) {
       diff,
     };
 
-#ifdef DEV_LOG_BIFF_STATS
-    printf("Biff stats\n");
-    printf("  Chunk info usage: %d chunks - %dB\n", biff_chunk_count, biff_chunk_count * sizeof(ChunkInfo));
-    printf("  Chunk diff usage: %d diffs - %dB\n\n", biff_diff_count, biff_diff_count * sizeof(ChunkDiff));
+#ifdef DEV_LOG_CHUNK_DIFF_STATS
+    printf("Chunk storage stats\n");
+    printf("  Chunk info usage: %d chunks - %dB\n", chunk_info_count, chunk_info_count * sizeof(ChunkInfo));
+    printf("  Chunk diff usage: %d diffs - %dB\n\n", chunk_diff_count, chunk_diff_count * sizeof(ChunkDiff));
 #endif
   }
 
@@ -476,10 +476,8 @@ uint8_t makeBlockChange (short x, uint8_t y, short z, uint8_t block) {
         else diff->changes[i].block = block;
 
         // FIXME: chest / multi-slot support
+        // FIXME: sync to disk
 
-        #ifndef DISK_SYNC_BLOCKS_ON_INTERVAL
-        // writeBlockChangesToDisk((void *)&diff->changes[i] - (void *)biff_buffer, sizeof(BlockChange));
-        #endif
         return 0;
       }
     }
@@ -502,14 +500,14 @@ uint8_t makeBlockChange (short x, uint8_t y, short z, uint8_t block) {
   } else {
     // no gap found, append a new diff
 
-    if (biff_chunk_count * sizeof(ChunkInfo) + (biff_diff_count + 1) * sizeof(ChunkDiff) > MAX_BIFF_SIZE) {
+    if (chunk_info_count * sizeof(ChunkInfo) + (chunk_diff_count + 1) * sizeof(ChunkDiff) > MAX_CHUNK_BUF_SIZE) {
       // out of memory
       failBlockChange(x, y, z, block);
       return 1;
     }
 
-    ChunkDiff *new_diff = (ChunkDiff *)(biff_buffer + MAX_BIFF_SIZE - (biff_diff_count + 1) * sizeof(ChunkDiff)); // allocate from back
-    biff_diff_count++;
+    ChunkDiff *new_diff = (ChunkDiff *)(chunk_buffer + MAX_CHUNK_BUF_SIZE - (chunk_diff_count + 1) * sizeof(ChunkDiff)); // allocate from back
+    chunk_diff_count++;
 
     *new_diff = (ChunkDiff){0};
     for (int i = 0; i < BLOCK_COUNT_PER_DIFF; i ++) {
@@ -519,10 +517,10 @@ uint8_t makeBlockChange (short x, uint8_t y, short z, uint8_t block) {
     diff->next_diff = new_diff; // link new diff with the chunks list
     dst = &new_diff->changes[0];
 
-#ifdef DEV_LOG_BIFF_STATS
-    printf("Biff stats\n");
-    printf("  Chunk info usage: %d chunks - %dB\n", biff_chunk_count, biff_chunk_count * sizeof(ChunkInfo));
-    printf("  Chunk diff usage: %d diffs - %dB\n\n", biff_diff_count, biff_diff_count * sizeof(ChunkDiff));
+#ifdef DEV_LOG_CHUNK_DIFF_STATS
+    printf("Chunk storage stats\n");
+    printf("  Chunk info usage: %d chunks - %dB\n", chunk_info_count, chunk_info_count * sizeof(ChunkInfo));
+    printf("  Chunk diff usage: %d diffs - %dB\n\n", chunk_diff_count, chunk_diff_count * sizeof(ChunkDiff));
 #endif
   }
 
@@ -530,9 +528,7 @@ uint8_t makeBlockChange (short x, uint8_t y, short z, uint8_t block) {
   dst->pos = block_pos;
   dst->block = block;
   // Write change to disk (if applicable)
-  #ifndef DISK_SYNC_BLOCKS_ON_INTERVAL
-  // writeBlockChangesToDisk(dst - (void *)biff_buffer, sizeof(BlockChange));
-  #endif
+  // FIXME: sync to disk
   return 0;
 }
 

@@ -42,8 +42,8 @@ uint8_t motd_len = sizeof(motd) - 1;
 
 uint16_t client_count;
 
-uint8_t biff_buffer[MAX_BIFF_SIZE];
-int biff_chunk_count, biff_diff_count;
+uint8_t chunk_buffer[MAX_CHUNK_BUF_SIZE];
+int chunk_info_count = 0, chunk_diff_count = 0;
 
 PlayerData player_data[MAX_PLAYERS];
 int player_data_count = 0;

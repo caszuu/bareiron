@@ -81,11 +81,11 @@
 #define MIN_GUARANTEED_MODIFIED_CHUNKS 60
 
 // In how big segments are block change arrays allocated from
-// the biff buffer pool. Bigger numbers will have lesser overhead
-// from diff links but will also waste memory if diffs are not fully filled up
+// the chunk buffer pool. Bigger numbers will have lesser overhead
+// from diff links but will also waste more memory if diffs are not fully filled up
 #define BLOCK_COUNT_PER_DIFF 8
 
-#define MAX_BIFF_SIZE (((MAX_BLOCK_CHANGES + 1) / BLOCK_COUNT_PER_DIFF) * sizeof(ChunkDiff) + MIN_GUARANTEED_MODIFIED_CHUNKS * sizeof(ChunkInfo))
+#define MAX_CHUNK_BUF_SIZE (((MAX_BLOCK_CHANGES + 1) / BLOCK_COUNT_PER_DIFF) * sizeof(ChunkDiff) + MIN_GUARANTEED_MODIFIED_CHUNKS * sizeof(ChunkInfo))
 
 // If defined, writes and reads world data to/from disk (or flash).
 // This is a synchronous operation, and can cause performance issues if
@@ -169,8 +169,8 @@
 // Doesn't implement authentication, hence disabled by default.
 // #define DEV_ENABLE_BEEF_DUMPS
 
-// If defined, log the memory usage of biff storage (chunk diffs) on every allocation
-#define DEV_LOG_BIFF_STATS
+// If defined, log the memory usage of chunk diff storage on every allocation
+#define DEV_LOG_CHUNK_DIFF_STATS
 
 #define STATE_NONE 0
 #define STATE_STATUS 1
@@ -269,8 +269,8 @@ typedef struct {
 
 #pragma pack(pop)
 
-extern uint8_t biff_buffer[MAX_BIFF_SIZE];
-extern int biff_chunk_count /* from front */, biff_diff_count /* from back */;
+extern uint8_t chunk_buffer[MAX_CHUNK_BUF_SIZE];
+extern int chunk_info_count /* from front */, chunk_diff_count /* from back */;
 
 extern PlayerData player_data[MAX_PLAYERS];
 extern int player_data_count;

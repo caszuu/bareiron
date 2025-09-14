@@ -42,9 +42,9 @@ int initSerializer () {
   if (file) {
 
     // Read block changes from the start of the file directly into memory
-    size_t read = fread(biff_buffer, 1, sizeof(biff_buffer), file);
-    if (read != sizeof(biff_buffer)) {
-      printf("Read %u bytes from \"world.bin\", expected %u (block changes). Aborting.\n", read, sizeof(biff_buffer));
+    size_t read = fread(chunk_buffer, 1, sizeof(chunk_buffer), file);
+    if (read != sizeof(chunk_buffer)) {
+      printf("Read %u bytes from \"world.bin\", expected %u (block changes). Aborting.\n", read, sizeof(chunk_buffer));
       return 1;
     }
     // Find the index of the last occupied entry to recover block_changes_count
@@ -54,7 +54,7 @@ int initSerializer () {
     //   if (i >= block_changes_count) block_changes_count = i + 1;
     // }
     // Seek past block changes to start reading player data
-    if (fseek(file, sizeof(biff_buffer), SEEK_SET) != 0) {
+    if (fseek(file, sizeof(chunk_buffer), SEEK_SET) != 0) {
       perror("Failed to seek to player data in \"world.bin\". Aborting.");
       return 1;
     }
@@ -80,8 +80,8 @@ int initSerializer () {
     }
     // Write initial block changes array
     // This should be done after all entries have had `block` set to 0xFF
-    size_t written = fwrite(biff_buffer, 1, sizeof(biff_buffer), file);
-    if (written != sizeof(biff_buffer)) {
+    size_t written = fwrite(chunk_buffer, 1, sizeof(chunk_buffer), file);
+    if (written != sizeof(chunk_buffer)) {
       perror(
         "Failed to write initial block data to \"world.bin\".\n"
         "Consider checking permissions or disabling SYNC_WORLD_TO_DISK in \"globals.h\"."
@@ -89,7 +89,7 @@ int initSerializer () {
       return 1;
     }
     // Seek past written block changes to start writing player data
-    if (fseek(file, sizeof(biff_buffer), SEEK_SET) != 0) {
+    if (fseek(file, sizeof(chunk_buffer), SEEK_SET) != 0) {
       perror(
         "Failed to seek past block changes in \"world.bin\"."
         "Consider checking permissions or disabling SYNC_WORLD_TO_DISK in \"globals.h\"."
@@ -135,7 +135,7 @@ void writeBlockChangesToDisk (int offset, int size) {
     return;
   }
   // Write block change entry to file
-  if (fwrite(biff_buffer + offset, 1, size, file) != sizeof(BlockChange)) {
+  if (fwrite(chunk_buffer + offset, 1, size, file) != sizeof(BlockChange)) {
     fclose(file);
     perror("Failed to write to \"world.bin\". Block updates have been dropped.");
     return;
@@ -158,7 +158,7 @@ void writePlayerDataToDisk () {
     return;
   }
   // Seek past block changes in file
-  if (fseek(file, sizeof(biff_buffer), SEEK_SET) != 0) {
+  if (fseek(file, sizeof(chunk_buffer), SEEK_SET) != 0) {
     fclose(file);
     perror("Failed to seek in \"world.bin\". Player updates have been dropped.");
     return;
