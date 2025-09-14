@@ -365,6 +365,44 @@ ChunkInfo *getChunkChanges (int chunk_x, int chunk_z) {
   return NULL;
 }
 
+void relocateChunkDiff (ChunkDiff *from, ChunkDiff *to) {
+  if (from == to) return;
+
+  // a less-than-ideal loop to find the effective "diff->prev_diff"
+  ChunkDiff *prev_from = NULL;
+  for (int i = 0; i < chunk_diff_count; i ++) {
+    ChunkDiff *candidate = (ChunkDiff *)(chunk_buffer + MAX_CHUNK_BUF_SIZE - (i + 1) * sizeof(ChunkDiff));
+
+    if (candidate->next_diff == from) {
+      prev_from = candidate;
+      break;
+    }
+  }
+
+  if (prev_from != NULL) {
+    // swap and patch links
+    *to = *from;
+    prev_from->next_diff = to;
+    return;
+  }
+
+  // no diff found, search in chunk infos
+
+  ChunkInfo *owning_info = NULL;
+  for (int i = 0; i < chunk_info_count; i ++) {
+    ChunkInfo *candidate = (ChunkInfo *)chunk_buffer + i;
+
+    if (candidate->next_diff == from) {
+      owning_info = candidate;
+      break;
+    }
+  }
+
+  // swap and patch links
+  *to = *from;
+  owning_info->next_diff = to;
+}
+
 // a light wrapper around getChunkChanges / getBlockChangeFromChunk
 uint8_t getBlockChange (short x, uint8_t y, short z) {
   int ch_x = x / CHUNK_SIZE;
@@ -394,7 +432,6 @@ void failBlockChange (short x, uint8_t y, short z, uint8_t block) {
 
 }
 
-// FIXME: chunk info/diff deallocation does not exist yet, should at least release diffs if they are empty
 // TODO: implement chunk diff serialization, will have to be smarter than a memcpy as the chunk structs contain pointers
 uint8_t makeBlockChange (short x, uint8_t y, short z, uint8_t block) {
   // Transmit block update to all in-game clients
@@ -457,14 +494,17 @@ uint8_t makeBlockChange (short x, uint8_t y, short z, uint8_t block) {
 #endif
   }
 
-  // try to replace an existing entry
-
   // compute and bitpack the chunk-local block position
   uint16_t block_pos = ((unsigned)x % CHUNK_SIZE) | (((unsigned)z % CHUNK_SIZE) << 4) | (y << 8);
 
+  // try to replace an existing entry (and release empty chunks, if any)
+
   BlockChange *first_gap = NULL;
-  ChunkDiff *diff = info->next_diff;
+  ChunkDiff *prev_diff = NULL, *diff = info->next_diff;
   while (true) {
+    // NOTE: is_diff_empty is only valid if is_base_block == true
+    bool is_diff_empty = true, block_found = false;
+
     for (int i = 0; i < BLOCK_COUNT_PER_DIFF; i ++) {
       if (diff->changes[i].block == 0xFF) {
         if (first_gap == NULL) first_gap = &diff->changes[i];
@@ -475,24 +515,64 @@ uint8_t makeBlockChange (short x, uint8_t y, short z, uint8_t block) {
         if (is_base_block) diff->changes[i].block = 0xFF;
         else diff->changes[i].block = block;
 
+        block_found = true;
+
         // FIXME: chest / multi-slot support
         // FIXME: sync to disk
 
-        return 0;
+        continue;
       }
+
+      is_diff_empty = false;
     }
 
-    // no matches found, try next diff from list
+    // if diff is empty and we're not adding a block to it,
+    // release its (and possibly chunk infos) memory for reuse
+    if (is_diff_empty && is_base_block) {
+      // unlink empty diff from chunk list
 
+      if (prev_diff != NULL) {
+        prev_diff->next_diff = diff->next_diff;
+      } else {
+        if (diff->next_diff != NULL) {
+          info->next_diff = diff->next_diff;
+        } else {
+          // whole chunk diff list empty, swap and pop chunk info
+          *info = *(ChunkInfo *)(chunk_buffer + chunk_info_count - 1);
+          chunk_info_count --;
+        }
+      }
+
+      // swap and pop diffs to fill up the gap
+      ChunkDiff *last_diff = (ChunkDiff *)(chunk_buffer + MAX_CHUNK_BUF_SIZE - (chunk_diff_count) * sizeof(ChunkDiff));
+      if (last_diff != diff) relocateChunkDiff(last_diff, diff);
+      chunk_diff_count --;
+
+      // reset refs into chunk list
+      if (prev_diff != NULL) diff = prev_diff;
+      else diff = info->next_diff;
+
+#ifdef DEV_LOG_CHUNK_DIFF_STATS
+      printf("Chunk storage stats\n");
+      printf("  Chunk info usage: %d chunks - %dB\n", chunk_info_count, chunk_info_count * sizeof(ChunkInfo));
+      printf("  Chunk diff usage: %d diffs - %dB\n\n", chunk_diff_count, chunk_diff_count * sizeof(ChunkDiff));
+#endif
+    }
+
+    if (block_found) return 0;
+
+    // no matches found, try next diff from list
     if (diff->next_diff == NULL) break; // end of list, keep ptr to last diff in `diff`
+
+    prev_diff = diff;
     diff = diff->next_diff;
   }
 
-  // Don't create a new entry if it contains the base terrain block - again, should never be possible? (except like placing water on water ig)
-  if (is_base_block) return 0;
-
   // no existing block change entry found, allocate a new one from the chunk
   BlockChange *dst;
+
+  // Don't create a new entry if it contains the base terrain block - again, should never be possible?
+  if (is_base_block) return 0;
 
   if (first_gap != NULL) {
     // gap in chunk diffs found, fill it in
