@@ -461,9 +461,9 @@ uint8_t buildChunkSection (int cx, int cy, int cz) {
   // This does mean that we're generating some terrain only to replace it,
   // but it's better to apply changes in one run rather than in individual
   // runs per block, as this is more expensive than terrain generation.
-  for (int i = cz; i < cz + 16 + CHUNK_SIZE; i += CHUNK_SIZE) {
-    for (int j = cx; j < cx + 16 + CHUNK_SIZE; j += CHUNK_SIZE) {
-      ChunkInfo *info = getChunkChanges(j / CHUNK_SIZE, i / CHUNK_SIZE);
+  for (int i = cz; i < cz + 16 + DIFF_CHUNK_SIZE; i += DIFF_CHUNK_SIZE) {
+    for (int j = cx; j < cx + 16 + DIFF_CHUNK_SIZE; j += DIFF_CHUNK_SIZE) {
+      ChunkInfo *info = getChunkChanges(j / DIFF_CHUNK_SIZE, i / DIFF_CHUNK_SIZE);
       if (info == NULL) continue;
 
       ChunkDiff *diff = info->next_diff;
@@ -476,8 +476,8 @@ uint8_t buildChunkSection (int cx, int cy, int cz) {
             if (diff->changes[k].block == B_chest) continue;
           #endif
           int pos = diff->changes[k].pos;
-          int x = (pos & 15) + info->x * CHUNK_SIZE;
-          int z = ((pos >> 4) & 15) + info->z * CHUNK_SIZE;
+          int x = (pos & 15) + info->x * DIFF_CHUNK_SIZE;
+          int z = ((pos >> 4) & 15) + info->z * DIFF_CHUNK_SIZE;
           int y = (pos >> 8);
 
           if ( // Check if block is within this chunk section

@@ -52,6 +52,9 @@
 // For best performance, CHUNK_SIZE should be a power of 2
 #define CHUNK_SIZE 8
 
+// Size of the area for which chunk lists are created and isolated
+#define DIFF_CHUNK_SIZE 16
+
 // Terrain low point - should start a bit below sea level for rivers/lakes
 #define TERRAIN_BASE_HEIGHT 60
 

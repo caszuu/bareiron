@@ -408,17 +408,17 @@ int sc_chunkDataAndUpdateLight (int client_fd, int _x, int _z) {
   // Light-emitting blocks are omitted from chunk data so that they can
   // be overlayed here. This seems to be cheaper than sending actual
   // block light data.
-  for (int i = z; i < z + 16 /*+ CHUNK_SIZE*/; i += CHUNK_SIZE) {
-    for (int j = x; j < x + 16 /*+ CHUNK_SIZE*/; j += CHUNK_SIZE) {
-      ChunkInfo *info = getChunkChanges(j / CHUNK_SIZE, i / CHUNK_SIZE);
+  for (int i = z; i < z + 16 /*+ DIFF_CHUNK_SIZE*/; i += DIFF_CHUNK_SIZE) {
+    for (int j = x; j < x + 16 /*+ DIFF_CHUNK_SIZE*/; j += DIFF_CHUNK_SIZE) {
+      ChunkInfo *info = getChunkChanges(j / DIFF_CHUNK_SIZE, i / DIFF_CHUNK_SIZE);
       if (info == NULL) continue;
 
       ChunkDiff *diff = info->next_diff;
       while (diff != NULL) {
         for (int k = 0; k < BLOCK_COUNT_PER_DIFF; k ++) {
           int pos = diff->changes[k].pos;
-          int x = (pos & 15) + info->x * CHUNK_SIZE;
-          int z = ((pos >> 4) & 15) + info->z * CHUNK_SIZE;
+          int x = (pos & 15) + info->x * DIFF_CHUNK_SIZE;
+          int z = ((pos >> 4) & 15) + info->z * DIFF_CHUNK_SIZE;
           int y = (pos >> 8);
 
           #ifdef ALLOW_CHESTS

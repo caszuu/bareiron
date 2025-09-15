@@ -333,7 +333,7 @@ void spawnPlayer (PlayerData *player) {
 uint8_t getBlockChangeFromChunk (ChunkInfo *info, short x, uint8_t y, short z) {
 
   // compute and bitpack the chunk-local block position
-  uint16_t pos = ((unsigned)x % CHUNK_SIZE) | (((unsigned)z % CHUNK_SIZE) << 4) | (y << 8);
+  uint16_t pos = ((unsigned)x % DIFF_CHUNK_SIZE) | (((unsigned)z % DIFF_CHUNK_SIZE) << 4) | (y << 8);
 
   ChunkDiff *diff = info->next_diff;
   while (diff != NULL) {
@@ -411,8 +411,8 @@ void relocateChunkDiff (ChunkDiff *from, ChunkDiff *to) {
 // a light wrapper around getChunkChanges / getBlockChangeFromChunk
 uint8_t getBlockChange (short x, uint8_t y, short z) {
 
-  int ch_x = div_floor(x, CHUNK_SIZE);
-  int ch_z = div_floor(z, CHUNK_SIZE);
+  int ch_x = div_floor(x, DIFF_CHUNK_SIZE);
+  int ch_z = div_floor(z, DIFF_CHUNK_SIZE);
 
   ChunkInfo *info = getChunkChanges(ch_x, ch_z);
   if (info != NULL) return getBlockChangeFromChunk(info, x, y, z);
@@ -465,7 +465,7 @@ uint8_t makeBlockChange (short x, uint8_t y, short z, uint8_t block) {
   uint8_t is_base_block = block == getTerrainAt(x, y, z, anchor);
 
   // find owning chunk (or allocate if required)
-  ChunkInfo *info = getChunkChanges(anchor.x, anchor.z);
+  ChunkInfo *info = getChunkChanges(div_floor(x, DIFF_CHUNK_SIZE), div_floor(z, DIFF_CHUNK_SIZE));
 
   if (info == NULL) {
     // chunk not allocated yet, push its data onto the chunk_buffer stacks
@@ -494,8 +494,8 @@ uint8_t makeBlockChange (short x, uint8_t y, short z, uint8_t block) {
     chunk_info_count ++;
 
     *info = (ChunkInfo){
-      anchor.x,
-      anchor.z,
+      div_floor(x, DIFF_CHUNK_SIZE),
+      div_floor(z, DIFF_CHUNK_SIZE),
       diff,
     };
 
@@ -507,7 +507,7 @@ uint8_t makeBlockChange (short x, uint8_t y, short z, uint8_t block) {
   }
 
   // compute and bitpack the chunk-local block position
-  uint16_t block_pos = ((unsigned)x % CHUNK_SIZE) | (((unsigned)z % CHUNK_SIZE) << 4) | (y << 8);
+  uint16_t block_pos = ((unsigned)x % DIFF_CHUNK_SIZE) | (((unsigned)z % DIFF_CHUNK_SIZE) << 4) | (y << 8);
 
   // search for an already existing entry in the chunk and replace it if found.
   // also release empty diffs along the way.
